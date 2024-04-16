@@ -7,52 +7,54 @@ import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import java.nio.ByteBuffer
+import java.io.File
 import java.util.concurrent.Executors
-import kotlin.coroutines.*
+
+val executor = Executors.newFixedThreadPool(4).asCoroutineDispatcher()
 
 fun main() {
-    val executor = Executors.newFixedThreadPool(4).asCoroutineDispatcher()
 
-    runBlocking(executor) {
-        launch {
-            sender()
-        }
-        launch {
-            receiver()
-        }
-    }
+    val file = File("/Users/nikichxp/Demo/host")
+    val host = Hoster(9000, file)
+    val fetcher = Fetcher("127.0.0.1", 9000)
+
+    file.list()?.forEach { println(it) }
 
 }
 
-suspend fun sender() {
-    val selectorManager = SelectorManager(Dispatchers.IO)
-    val serverSocket = aSocket(selectorManager).tcp().bind("127.0.0.1", 9002)
-    val socket = serverSocket.accept()
-    val sendChannel = socket.openWriteChannel(autoFlush = true)
-    var i = 0
-    while (true) {
-        sendChannel.writeFully("Hello World! x = $i".toByteArray())
-        delay(1_000)
-        i++
+class Hoster(val configPort: Int, val directory: File) {
+    init {
+        GlobalScope.launch(executor) {
+            val selectorManager = SelectorManager(Dispatchers.IO)
+            val serverSocket = aSocket(selectorManager).tcp().bind("127.0.0.1", configPort)
+            val socket = serverSocket.accept()
+            val sendChannel = socket.openWriteChannel(autoFlush = true)
+            var i = 0
+            while (true) {
+                sendChannel.writeFully("Hello World! x = $i".toByteArray())
+                delay(1_000)
+                i++
+            }
+        }
     }
 }
 
-suspend fun receiver() {
-    val selectorManager = SelectorManager(Dispatchers.IO)
-    val socket = aSocket(selectorManager).tcp().connect("127.0.0.1", 9002)
+class Fetcher(val host: String, val port: Int) {
+    init {
+        GlobalScope.launch(executor) {
+            val selectorManager = SelectorManager(Dispatchers.IO)
+            val socket = aSocket(selectorManager).tcp().connect(host, port)
 
-    val receiveChannel = socket.openReadChannel()
+            val receiveChannel = socket.openReadChannel()
 
-    while (true) {
-        receiveChannel.read {
-            val arr = it.moveToByteArray()
-            println(String(arr))
+            while (true) {
+                receiveChannel.read {
+                    val arr = it.moveToByteArray()
+                    println(String(arr))
+                }
+            }
         }
     }
 }
